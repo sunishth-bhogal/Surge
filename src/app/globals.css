@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces — dark first, near-black */
+  --color-ink: #07080a;
+  --color-surface: #101214;
+  --color-raised: #171a1e;
+  --color-hover: #1e2227;
+  --color-line: #23272d;
+  --color-line-soft: #1a1d21;
+
+  /* Type */
+  --color-bright: #f4f6f8;
+  --color-muted: #9aa1ab;
+  --color-faint: #5f666f;
+
+  /* Market direction */
+  --color-up: #30d158;
+  --color-up-dim: #1b4a2c;
+  --color-down: #ff453a;
+  --color-down-dim: #4d1f1c;
+
+  /* Restrained accent */
+  --color-accent: #3d7dff;
+  --color-accent-dim: #1b2b4d;
+
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-numeric:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --radius-card: 18px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-bright);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures everywhere prices live, so digits don't jitter on tick */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Horizontal rails: scrollable, no visible scrollbar */
+.rail {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+.live-dot {
+  animation: pulse-dot 1.9s ease-in-out infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: rise 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

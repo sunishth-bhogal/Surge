@@ -7,10 +7,10 @@ Modelled on how Real does live sports: the **play-by-play stream is the product*
 summary feed. Individual moments land as they happen, each carrying its own reactions and
 its own discussion, and every symbol has a live room that gets louder as the price moves.
 
-Covers all **12,874 listed US securities**. Symbols, company names and exchanges are real,
-pulled from the official NASDAQ Trader symbol directory. **Prices are simulated** — derived
-from the ticker and then ticked live in the browser — so the app runs with no API key and
-no backend. The provider seam is intact for swapping in real data.
+Covers all **12,874 listed US securities**, with **real market data** — prices, intraday and
+historical charts, 52-week ranges and volume come from Yahoo's chart endpoint. No API key
+and no backend required. When a symbol or the upstream call is unavailable, it degrades to
+a built-in simulator, and the UI always says which of the two you are looking at.
 
 ## What makes it feel live
 
@@ -20,7 +20,9 @@ no backend. The provider seam is intact for swapping in real data.
 | Play detection | `src/lib/moments.ts` | Turns price changes into plays: levels broken, session highs/lows, day milestones, runs on the tape. |
 | Play-by-play feed | `src/components/live/live-feed.tsx` | The Home centrepiece. New plays stream in with reactions and threads per moment. |
 | Live rooms | `src/components/live/stock-chat.tsx` | Per-symbol chat. Message cadence is computed from the live tape, so a 6% move fills the room and a flat tape goes quiet. |
-| Quote derivation | `src/lib/quote-engine.ts` | A plausible quote for any of the 12,874 symbols, derived from the ticker string alone. |
+| Quote derivation | `src/lib/quote-engine.ts` | Fallback quote for any symbol, derived from the ticker string alone. |
+| Live data | `src/lib/providers/yahoo.ts` | Real quotes and real historical series from Yahoo's chart endpoint. |
+| Source resolution | `src/lib/resolve.ts` | Real data when available, simulator when not — and always reports which. |
 
 Three constraints shaped that code, and they are easy to break by accident:
 
@@ -32,6 +34,35 @@ Three constraints shaped that code, and they are easy to break by accident:
    rest of the app. Search runs server-side through `/api/search` for the same reason.
 3. **Plays are throttled.** A trending symbol makes new highs constantly; announcing each
    one buries the feed. Extremes need a 45s cooldown and a 0.25% gap to count.
+
+## Data sources, and being honest about them
+
+The app shows real prices **and** can simulate them, so the rule is that it never lets one
+pass for the other. Every price surface carries a tag: `Live · 15m delay`, `Market closed`,
+`Pre-market`, `After hours`, or `Simulated`.
+
+What is real: prices, day/52-week ranges, volume, intraday and historical charts, company
+names, ticker symbols, exchange listings.
+
+What is not: market cap and P/E (estimated, and labelled as such on the page — Yahoo's chart
+endpoint carries no fundamentals), and all community activity — users, posts, rooms,
+predictions, karma and leaderboards are fabricated.
+
+Three caveats on the Yahoo endpoint, documented at the top of `src/lib/providers/yahoo.ts`:
+
+1. It is **undocumented and unofficial**. Yahoo retired its public API years ago. This
+   endpoint is widely used but has no stability guarantee and could change without notice.
+   Every call is wrapped so a failure degrades to the simulator instead of breaking a page.
+2. Free data is **delayed ~15 minutes** and does not move outside market hours. The UI says
+   so rather than implying real-time.
+3. The batch endpoint returns `Unauthorized` without a session crumb, so symbols are fetched
+   one request each behind a cache and a concurrency cap.
+
+Set `SPLASH_LIVE_DATA=0` to force the simulator — useful offline, in tests, or when demoing
+outside market hours and you want a moving tape.
+
+**Wealthsimple is not an option here.** It publishes no market-data API; the only way in is
+brokerage endpoints requiring your trading account credentials.
 
 ## Running it
 
@@ -68,6 +99,9 @@ To refresh the symbol list, re-download the two directory files into `scripts/` 
 | `/stock/[ticker]` | SSG + dynamic | Any of 12,874 symbols. Nine curated names prerender; the rest render on demand |
 | `/search` | client | Universe-wide search via `/api/search`, debounced |
 | `/api/search` | route | Server-side ranked search over all 12,874 symbols |
+| `/api/quotes` | route | Live prices for symbols on screen; polled by the tick engine |
+| `/api/market-state` | route | Session phase, derived from Yahoo's trading-period bounds |
+| `/leaderboard` | client | Ranked predictors by accuracy, karma and streak |
 | `/notifications` | server | Grouped new/earlier alerts |
 | `/profile` | server | Signed-in profile with an editable watchlist |
 | `/profile/[username]` | SSG (6) | Other users' profiles |
@@ -192,11 +226,11 @@ forecasting, never wagers.
 2. **Auth.** Supabase Auth for email, Google and Apple. `/welcome` currently stubs the three
    buttons; wire them and persist the onboarding watchlist to `watchlists` instead of
    `localStorage`. `src/components/app-state.tsx` is the only place that touches storage.
-3. **Replace simulated prices with real ones.** Add `src/lib/providers/polygon.ts` (or
-   Finnhub/Alpaca) and branch in `market.ts` on an env var. Note the free tiers rate-limit
-   hard, so the realistic shape is: keep the static universe for search, fetch real quotes
-   only for symbols actually opened, and feed them into the tick engine as seeds instead of
-   `deriveQuote`. Keep the simulator for local development and tests.
+3. **Harden the data feed.** Yahoo's endpoint is unofficial and could stop working. For
+   anything beyond a prototype, move to a provider with a contract (Polygon, Finnhub,
+   Alpaca) behind the same `resolve.ts` seam, and add real fundamentals so market cap and
+   P/E stop being estimates. A paid tier also removes the 15-minute delay, at which point
+   the play-by-play becomes genuinely real-time.
 4. **Make the rooms genuinely multi-user.** Right now `stock-chat.tsx` simulates the room
    locally. Swap the message source for a Supabase realtime subscription on a `messages`
    table and the UI stays as-is — the component already renders from an array it does not
@@ -213,6 +247,7 @@ forecasting, never wagers.
 ## Disclaimer
 
 Information on Splash is for informational and entertainment purposes only and is not
-financial advice. **All prices, volumes and fundamentals in this prototype are simulated**
-and do not reflect real market data. Company names, ticker symbols and exchange listings
-are real. Predictions award reputation only and are never wagers.
+financial advice. Prices and charts are real but **delayed by roughly 15 minutes**, market
+cap and P/E are estimated, and all community activity — users, posts, rooms, predictions,
+karma and leaderboards — is simulated. Predictions award reputation only and are never
+wagers.

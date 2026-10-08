@@ -16,6 +16,8 @@ import type { LiveMoment, LiveTick } from "@/lib/live-types";
 import { detectMoments } from "@/lib/moments";
 
 const TICK_MS = 1400;
+/** How often to re-anchor on real prices. Yahoo free data is ~15min delayed. */
+const SYNC_MS = 20_000;
 
 interface TickerState extends LiveTick {
   /** Levels already announced, so a moment fires once per threshold. */
@@ -40,8 +42,15 @@ class Engine {
   private listeners = new Set<() => void>();
   private momentListeners = new Set<(m: LiveMoment) => void>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private syncTimer: ReturnType<typeof setInterval> | null = null;
   /** Bumped on every tick; snapshots key off it so React sees a new value. */
   version = 0;
+  /**
+   * "live" once a real quote has landed. While live, prices are only changed by
+   * the server sync — the random walk is switched off, because inventing
+   * movement on top of real data would be showing a fake price as a real one.
+   */
+  source: "live" | "simulated" | "unknown" = "unknown";
 
   private ensure(ticker: string): TickerState {
     const existing = this.state.get(ticker);
@@ -102,17 +111,69 @@ class Engine {
   }
 
   private start() {
-    if (this.timer || typeof window === "undefined") return;
-    this.timer = setInterval(() => this.tick(), TICK_MS);
+    if (typeof window === "undefined") return;
+    if (!this.timer) this.timer = setInterval(() => this.tick(), TICK_MS);
+    if (!this.syncTimer) {
+      this.syncTimer = setInterval(() => void this.sync(), SYNC_MS);
+      void this.sync();
+    }
   }
 
   private stop() {
-    if (!this.timer) return;
-    clearInterval(this.timer);
+    if (this.timer) clearInterval(this.timer);
+    if (this.syncTimer) clearInterval(this.syncTimer);
     this.timer = null;
+    this.syncTimer = null;
+  }
+
+  /** Pulls real prices for everything on screen and re-anchors to them. */
+  private async sync() {
+    const tickers = [...this.subs.keys()];
+    if (!tickers.length) return;
+
+    try {
+      const res = await fetch(`/api/quotes?tickers=${tickers.join(",")}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        source: "live" | "simulated";
+        quotes: Record<string, Omit<LiveTick, "ticker" | "direction">>;
+      };
+
+      this.source = data.source;
+      if (data.source !== "live") return;
+
+      for (const [ticker, real] of Object.entries(data.quotes)) {
+        const s = this.state.get(ticker);
+        if (!s) continue;
+
+        const prev = s.price;
+        s.price = real.price;
+        s.previousClose = real.previousClose;
+        s.changePercent = real.changePercent;
+        s.dayHigh = Math.max(s.dayHigh, real.dayHigh);
+        s.dayLow = Math.min(s.dayLow, real.dayLow);
+        s.volume = real.volume || s.volume;
+        s.direction = s.price > prev ? 1 : s.price < prev ? -1 : 0;
+
+        // Plays are detected off genuine moves only.
+        if (prev !== s.price) {
+          for (const moment of detectMoments(s, prev)) {
+            this.momentListeners.forEach((l) => l(moment));
+          }
+        }
+      }
+
+      this.version++;
+      this.listeners.forEach((l) => l());
+    } catch {
+      /* offline or endpoint down — the simulator keeps the screen alive */
+    }
   }
 
   private tick() {
+    // Real prices arrive from sync(); never fabricate movement on top of them.
+    if (this.source === "live") return;
+
     for (const ticker of this.subs.keys()) {
       const s = this.state.get(ticker);
       if (!s) continue;

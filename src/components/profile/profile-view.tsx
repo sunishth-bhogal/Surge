@@ -71,7 +71,7 @@ export function ProfileView({ user, isSelf }: { user: User; isSelf: boolean }) {
       </Card>
 
       <section className="mt-7">
-        <SectionHeader title="Predictions" />
+        <SectionHeader title="Predictions" action="Leaderboard" href="/leaderboard" />
         <Card className="p-4">
           <div className="flex items-end justify-between">
             <div>

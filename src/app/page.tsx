@@ -7,7 +7,7 @@ import { FeedCard } from "@/components/feed/feed-card";
 import { LiveFeed } from "@/components/live/live-feed";
 import { IndexRail } from "@/components/markets/index-rail";
 import { WatchlistRail } from "@/components/markets/watchlist-rail";
-import { LiveTag } from "@/components/ui/primitives";
+import { MarketStatus } from "@/components/live/market-status";
 import { INDICES, TRENDING } from "@/data/social";
 import { buildFeed } from "@/lib/feed";
 
@@ -29,7 +29,7 @@ export default function HomePage() {
           <h1 className="text-[28px] leading-none font-bold tracking-[-0.035em]">Splash</h1>
           <p className="mt-1.5 text-[12.5px] text-faint">Markets, live</p>
         </div>
-        <LiveTag label="Market open" />
+        <MarketStatus />
       </header>
 
       <IndexRail indices={INDICES} />
@@ -77,7 +77,7 @@ export default function HomePage() {
 
       <p className="mt-8 px-2 text-center text-[11.5px] leading-relaxed text-faint/80">
         Information on Splash is for informational and entertainment purposes only and is not
-        financial advice. Prices shown are simulated.
+        financial advice. Community activity, predictions and rooms are simulated.
       </p>
     </main>
   );

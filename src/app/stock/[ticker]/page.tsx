@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { TopBar } from "@/components/chrome/top-bar";
 import { StockChat } from "@/components/live/stock-chat";
+import { SourceTag } from "@/components/live/source-tag";
 import { StockLiveHeader } from "@/components/stock/stock-live-header";
 import { Community } from "@/components/stock/community";
 import { EventTimeline } from "@/components/stock/event-timeline";
@@ -11,9 +12,9 @@ import { POSTS, PREDICTIONS, TRENDING } from "@/data/social";
 import { STOCKS } from "@/data/stocks";
 import { compact, marketCap, price } from "@/lib/format";
 import { marketData } from "@/lib/market";
-import { deriveQuote } from "@/lib/quote-engine";
-import { buildSeries, buildSyntheticSeries } from "@/lib/series";
 import { getSecurity } from "@/lib/universe";
+import { resolveQuote, resolveSeries } from "@/lib/resolve";
+import { fetchMarketState } from "@/lib/providers/yahoo";
 import { crowdLine, volumeLine } from "@/lib/storyline";
 import type { PricePoint, Range } from "@/lib/types";
 
@@ -30,18 +31,22 @@ export default async function StockPage({ params }: PageProps<"/stock/[ticker]">
 
   const security = getSecurity(ticker);
   if (!security) notFound();
-  const quote = deriveQuote(ticker);
 
   const curated = STOCKS.find((s) => s.ticker === ticker);
-  const events = curated ? await marketData.getMarketEvents(ticker) : [];
-  const news = curated ? await marketData.getCompanyNews(ticker) : [];
+
+  const [{ quote, source }, marketState, events, news, ...resolved] = await Promise.all([
+    resolveQuote(ticker),
+    fetchMarketState(),
+    curated ? marketData.getMarketEvents(ticker) : Promise.resolve([]),
+    curated ? marketData.getCompanyNews(ticker) : Promise.resolve([]),
+    ...RANGES.map((r) => resolveSeries(ticker, r)),
+  ]);
 
   const series = Object.fromEntries(
-    RANGES.map((r) => [
-      r,
-      curated ? buildSeries(ticker, r).points : buildSyntheticSeries(ticker, r, quote).points,
-    ]),
+    RANGES.map((r, i) => [r, resolved[i].series.points]),
   ) as Record<Range, PricePoint[]>;
+
+  const marketOpen = marketState === "regular";
 
   const buzz = TRENDING.find((t) => t.ticker === ticker);
   const posts = POSTS.filter((p) => p.ticker === ticker);
@@ -78,6 +83,9 @@ export default async function StockPage({ params }: PageProps<"/stock/[ticker]">
         />
 
         <section className="mt-5">
+          <div className="mb-2 flex justify-end">
+            <SourceTag source={source} marketOpen={marketOpen} />
+          </div>
           <PriceChart series={series} previousClose={quote.previousClose} />
         </section>
 
@@ -93,6 +101,7 @@ export default async function StockPage({ params }: PageProps<"/stock/[ticker]">
           <p className="mt-2.5 px-1 text-[12.5px] text-faint">
             {volumeLine(quote.volume, quote.avgVolume)}
             {buzz ? ` · ${crowdLine(buzz.bullishShare)}` : ""}.
+            {source === "live" && " Market cap and P/E are estimated."}
           </p>
         </section>
 
@@ -122,8 +131,11 @@ export default async function StockPage({ params }: PageProps<"/stock/[ticker]">
         </section>
 
         <p className="mt-8 px-2 text-center text-[11.5px] leading-relaxed text-faint/80">
-          Information on Splash is for informational and entertainment purposes only and is not
-          financial advice. Prices shown are simulated.
+          Information on Splash is for informational and entertainment purposes only and is
+          not financial advice.
+          {source === "live"
+            ? " Prices are real but delayed; community activity is simulated."
+            : " Prices on this page are simulated."}
         </p>
       </main>
     </>

@@ -40,7 +40,7 @@ export default async function MarketsPage() {
         </section>
 
         <section className="mt-7">
-          <SectionHeader title="Trending on Splash" />
+          <SectionHeader title="Trending on Splash" action="Leaderboard" href="/leaderboard" />
           <div className="divide-y divide-line-soft overflow-hidden rounded-card border border-line-soft bg-surface">
             {trending.slice(0, 5).map((row, i) => (
               <StockRow key={row.ticker} row={row} rank={i + 1} showBuzz />

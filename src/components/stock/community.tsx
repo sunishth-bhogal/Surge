@@ -56,11 +56,17 @@ export function Community({
             <PenLine size={15} strokeWidth={2.2} />
             What are you seeing in {stock.ticker}?
           </button>
-          <Card className="divide-y divide-line-soft">
-            {(tab === "Live" ? live : top).map((post) => (
-              <PostCard key={post.id} post={post} />
-            ))}
-          </Card>
+          {posts.length ? (
+            <Card className="divide-y divide-line-soft">
+              {(tab === "Live" ? live : top).map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </Card>
+          ) : (
+            <Empty
+              text={`No posts on ${stock.ticker} yet — the live room above is where the talking is happening.`}
+            />
+          )}
         </>
       )}
 

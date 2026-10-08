@@ -1,4 +1,5 @@
 import { QUOTES } from "@/data/stocks";
+import { deriveQuote } from "@/lib/quote-engine";
 import type { PricePoint, Range, Series } from "@/lib/types";
 
 /**
@@ -90,8 +91,57 @@ export function buildSeries(ticker: string, range: Range): Series {
 
 /** Short price array for sparklines — same walk, downsampled. */
 export function buildSpark(ticker: string, range: Range = "1D", count = 24): number[] {
-  const { points } = buildSeries(ticker, range);
+  const { points } = seriesFor(ticker, range);
   if (!points.length) return [];
   const step = (points.length - 1) / (count - 1);
   return Array.from({ length: count }, (_, i) => points[Math.round(i * step)].price);
+}
+
+/**
+ * Chart for any symbol outside the curated nine. Same seeded-walk approach as
+ * buildSeries, but anchored on the derived quote instead of hand-set returns.
+ */
+export function buildSyntheticSeries(
+  ticker: string,
+  range: Range,
+  quote: { price: number; open: number; previousClose: number },
+): Series {
+  const { points: n, vol, spanMs } = SHAPE[range];
+  const end = quote.price;
+
+  // Longer windows imply a larger cumulative drift; sign varies by symbol.
+  const drift = { "1D": 0, "1W": 0.04, "1M": 0.09, "3M": 0.17, "1Y": 0.38, "5Y": 1.1 }[range];
+  const bias = (hash(`${ticker}:drift`) % 1000) / 1000 - 0.42;
+  const start = range === "1D" ? quote.open : end / (1 + drift * bias * 2.6);
+
+  const rand = mulberry32(hash(`${ticker}:syn:${range}`));
+  const walk: number[] = [0];
+  let step = 0;
+  for (let i = 1; i < n; i++) {
+    step = step * 0.72 + (rand() - 0.5) * vol;
+    walk.push(walk[i - 1] + step);
+  }
+
+  const slope = walk[n - 1] / (n - 1);
+  const detrended = walk.map((v, i) => v - slope * i);
+
+  const points: PricePoint[] = detrended.map((wiggle, i) => {
+    const base = start + ((end - start) * i) / (n - 1);
+    return {
+      t: SESSION_CLOSE - spanMs + (spanMs * i) / (n - 1),
+      price: Math.max(0.01, Math.round(base * (1 + wiggle) * 100) / 100),
+    };
+  });
+
+  points[0] = { ...points[0], price: Math.max(0.01, Math.round(start * 100) / 100) };
+  points[n - 1] = { ...points[n - 1], price: end };
+  return { ticker, range, points };
+}
+
+/** Curated series when we have one, synthetic otherwise. */
+export function seriesFor(ticker: string, range: Range): Series {
+  if (QUOTES[ticker]) return buildSeries(ticker, range);
+  const quote = deriveQuote(ticker);
+  if (!quote) return { ticker, range, points: [] };
+  return buildSyntheticSeries(ticker, range, quote);
 }

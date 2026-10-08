@@ -2,10 +2,36 @@
 
 The social layer for the stock market. Markets, live.
 
-A front-end prototype of a consumer social product for following the market together —
-live prices, market events you can react to, community predictions and reputation.
-Everything runs on mock data behind a provider interface, so a real market-data API can be
-dropped in without touching the UI.
+A front-end prototype of a consumer social product for following the market together.
+Modelled on how Real does live sports: the **play-by-play stream is the product**, not a
+summary feed. Individual moments land as they happen, each carrying its own reactions and
+its own discussion, and every symbol has a live room that gets louder as the price moves.
+
+Covers all **12,874 listed US securities**. Symbols, company names and exchanges are real,
+pulled from the official NASDAQ Trader symbol directory. **Prices are simulated** — derived
+from the ticker and then ticked live in the browser — so the app runs with no API key and
+no backend. The provider seam is intact for swapping in real data.
+
+## What makes it feel live
+
+| Piece | File | What it does |
+| --- | --- | --- |
+| Tick engine | `src/components/live/live-provider.tsx` | One interval drives every subscribed symbol. Starts at the exact price the server rendered, then moves. |
+| Play detection | `src/lib/moments.ts` | Turns price changes into plays: levels broken, session highs/lows, day milestones, runs on the tape. |
+| Play-by-play feed | `src/components/live/live-feed.tsx` | The Home centrepiece. New plays stream in with reactions and threads per moment. |
+| Live rooms | `src/components/live/stock-chat.tsx` | Per-symbol chat. Message cadence is computed from the live tape, so a 6% move fills the room and a flat tape goes quiet. |
+| Quote derivation | `src/lib/quote-engine.ts` | A plausible quote for any of the 12,874 symbols, derived from the ticker string alone. |
+
+Three constraints shaped that code, and they are easy to break by accident:
+
+1. **Derivation never touches a clock or `Math.random`.** The server and the first client
+   render must produce identical prices or React flags a hydration mismatch. Movement is
+   layered on only after mount.
+2. **`quote-engine.ts` must not import `universe.ts`.** The tick engine runs on the client,
+   and pulling the 877KB universe index into the browser to read one flag would dwarf the
+   rest of the app. Search runs server-side through `/api/search` for the same reason.
+3. **Plays are throttled.** A trending symbol makes new highs constantly; announcing each
+   one buries the feed. Extremes need a 45s cooldown and a 0.25% gap to count.
 
 ## Running it
 
@@ -17,10 +43,14 @@ Then open http://localhost:3200 (the dev script defaults to 3000; the preview co
 `--port 3200`).
 
 ```bash
-npm run build      # production build
-npm run typecheck  # tsc --noEmit
-npm run lint       # eslint
+npm run build           # production build
+npm run typecheck       # tsc --noEmit
+npm run lint            # eslint
+npm run build:universe  # regenerate src/data/universe.json from scripts/*.txt
 ```
+
+To refresh the symbol list, re-download the two directory files into `scripts/` from
+<https://www.nasdaqtrader.com/dynamic/symdir/> and run `npm run build:universe`.
 
 > **Note on the scripts.** This project sits under a directory whose name contains a `:`.
 > npm prepends `node_modules/.bin` to `PATH`, and `PATH` is colon-separated, so that entry
@@ -35,8 +65,9 @@ npm run lint       # eslint
 | `/` | client | Home feed — indices, watchlist rail, ranked event feed |
 | `/welcome` | client | Onboarding: auth choice, then pick ≥5 stocks |
 | `/markets` | server | Indices, trending, movers, earnings calendar, sector read |
-| `/stock/[ticker]` | SSG (9) | Stock page: chart, stats, event timeline, community |
-| `/search` | client | Global search over companies, tickers and people |
+| `/stock/[ticker]` | SSG + dynamic | Any of 12,874 symbols. Nine curated names prerender; the rest render on demand |
+| `/search` | client | Universe-wide search via `/api/search`, debounced |
+| `/api/search` | route | Server-side ranked search over all 12,874 symbols |
 | `/notifications` | server | Grouped new/earlier alerts |
 | `/profile` | server | Signed-in profile with an editable watchlist |
 | `/profile/[username]` | SSG (6) | Other users' profiles |
@@ -76,13 +107,25 @@ src/
       price-chart.tsx        scrubbable area chart with range tabs
       sparkline.tsx          inline mini chart
       reaction-bar.tsx       emoji reactions, picker, save, share
+    live/
+      live-provider.tsx      tick engine + useLiveTick / useLiveTicks / useMomentStream
+      live-feed.tsx          the play-by-play stream
+      moment-card.tsx        one play, with its own reactions and thread
+      live-price.tsx         price that flashes on each tick
+      stock-chat.tsx         live room
   data/
-    stocks.ts                9 tickers + quotes
+    universe.json            12,874 real symbols (generated; server-only)
+    stocks.ts                9 curated tickers + hand-set quotes
     social.ts                users, posts, events, predictions, news, earnings
   lib/
     types.ts                 all data models + MarketDataProvider
     market.ts                selects the active provider
     providers/mock.ts        the mock implementation
+    universe.ts              universe lookup + ranked search (server-only)
+    quote-engine.ts          derives a quote for any symbol (client-safe)
+    moments.ts               price change → play-by-play
+    live-types.ts            LiveTick, LiveMoment
+    chatter.ts               room dialogue, keyed to what the tape is doing
     series.ts                seeded price-series generator
     feed.ts                  home-feed ranking + interleaving
     format.ts                price/percent/compact/relative-time helpers
@@ -149,14 +192,19 @@ forecasting, never wagers.
 2. **Auth.** Supabase Auth for email, Google and Apple. `/welcome` currently stubs the three
    buttons; wire them and persist the onboarding watchlist to `watchlists` instead of
    `localStorage`. `src/components/app-state.tsx` is the only place that touches storage.
-3. **Replace the mock provider.** Add `src/lib/providers/polygon.ts` (or Finnhub/Alpaca),
-   branch in `market.ts` on an env var, and keep the mock for local development and tests.
-4. **Realtime.** Supabase realtime subscriptions on `posts` and `market_events` so the Live
-   tab and the home feed update without a refresh. The feed is already a pure function of
-   its inputs (`buildFeed`), so this is a data-source swap.
-5. **Market-event generation.** A worker that watches quotes and emits `market_events` rows
-   on the conditions the timeline already renders: opens, breakouts, volume pace, new
-   highs/lows, analyst actions, milestones.
+3. **Replace simulated prices with real ones.** Add `src/lib/providers/polygon.ts` (or
+   Finnhub/Alpaca) and branch in `market.ts` on an env var. Note the free tiers rate-limit
+   hard, so the realistic shape is: keep the static universe for search, fetch real quotes
+   only for symbols actually opened, and feed them into the tick engine as seeds instead of
+   `deriveQuote`. Keep the simulator for local development and tests.
+4. **Make the rooms genuinely multi-user.** Right now `stock-chat.tsx` simulates the room
+   locally. Swap the message source for a Supabase realtime subscription on a `messages`
+   table and the UI stays as-is — the component already renders from an array it does not
+   own. Same for reactions on moments.
+5. **Move play detection server-side.** `src/lib/moments.ts` currently runs per-browser, so
+   two users see different plays. A worker running the same detectors against real quotes
+   and writing `market_events` rows would give everyone one shared play-by-play — which is
+   what makes reacting to a moment together mean anything.
 6. **Prediction resolution.** A scheduled job that resolves predictions at close, writes
    results, and updates karma and streaks.
 7. **Earnings live experience.** The `/stock/[ticker]` timeline is the right substrate —
@@ -165,4 +213,6 @@ forecasting, never wagers.
 ## Disclaimer
 
 Information on Splash is for informational and entertainment purposes only and is not
-financial advice.
+financial advice. **All prices, volumes and fundamentals in this prototype are simulated**
+and do not reflect real market data. Company names, ticker symbols and exchange listings
+are real. Predictions award reputation only and are never wagers.

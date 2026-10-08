@@ -4,7 +4,8 @@ import Link from "next/link";
 import { Minus, Plus } from "lucide-react";
 import { useAppState } from "@/components/app-state";
 import { Card, Delta, TickerBadge } from "@/components/ui/primitives";
-import { QUOTES, STOCKS } from "@/data/stocks";
+import { STOCKS } from "@/data/stocks";
+import { deriveQuote } from "@/lib/quote-engine";
 import { price } from "@/lib/format";
 
 export function WatchlistEditor() {
@@ -23,15 +24,16 @@ export function WatchlistEditor() {
         )}
         {watchlist.map((ticker) => {
           const stock = STOCKS.find((s) => s.ticker === ticker);
-          const quote = QUOTES[ticker];
-          if (!stock || !quote) return null;
+          const quote = deriveQuote(ticker);
           return (
             <div key={ticker} className="flex items-center gap-3 px-4 py-3">
               <Link href={`/stock/${ticker}`} className="flex min-w-0 flex-1 items-center gap-3">
-                <TickerBadge ticker={ticker} color={stock.logoColor} size={32} />
+                <TickerBadge ticker={ticker} color={stock?.logoColor ?? "#3d7dff"} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-bold">{ticker}</p>
-                  <p className="truncate text-[12px] text-faint">{stock.companyName}</p>
+                  <p className="truncate text-[12px] text-faint">
+                    {stock?.companyName ?? "Added from search"}
+                  </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="tnum text-[13.5px] font-semibold">{price(quote.price)}</p>

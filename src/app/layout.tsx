@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppStateProvider } from "@/components/app-state";
 import { AppShell } from "@/components/chrome/app-shell";
+import { LiveProvider } from "@/components/live/live-provider";
 
 export const metadata: Metadata = {
   title: "Splash — Markets, live",
@@ -21,7 +22,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body>
         <AppStateProvider>
-          <AppShell>{children}</AppShell>
+          <LiveProvider>
+            <AppShell>{children}</AppShell>
+          </LiveProvider>
         </AppStateProvider>
       </body>
     </html>

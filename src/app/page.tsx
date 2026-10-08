@@ -4,15 +4,23 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useAppState } from "@/components/app-state";
 import { FeedCard } from "@/components/feed/feed-card";
+import { LiveFeed } from "@/components/live/live-feed";
 import { IndexRail } from "@/components/markets/index-rail";
 import { WatchlistRail } from "@/components/markets/watchlist-rail";
 import { LiveTag } from "@/components/ui/primitives";
-import { INDICES } from "@/data/social";
+import { INDICES, TRENDING } from "@/data/social";
 import { buildFeed } from "@/lib/feed";
 
 export default function HomePage() {
   const { watchlist } = useAppState();
   const feed = useMemo(() => buildFeed(watchlist), [watchlist]);
+
+  // The stream covers what you follow plus what the whole app is watching, so
+  // the tape is never silent even with a short watchlist.
+  const streamTickers = useMemo(() => {
+    const set = new Set([...watchlist, ...TRENDING.slice(0, 6).map((t) => t.ticker)]);
+    return [...set];
+  }, [watchlist]);
 
   return (
     <main className="mx-auto max-w-xl px-4 pb-8">
@@ -21,9 +29,7 @@ export default function HomePage() {
           <h1 className="text-[28px] leading-none font-bold tracking-[-0.035em]">Splash</h1>
           <p className="mt-1.5 text-[12.5px] text-faint">Markets, live</p>
         </div>
-        <div className="flex items-center gap-2">
-          <LiveTag label="Market open" />
-        </div>
+        <LiveTag label="Market open" />
       </header>
 
       <IndexRail indices={INDICES} />
@@ -51,21 +57,27 @@ export default function HomePage() {
 
       <section className="mt-7">
         <div className="mb-3 flex items-center gap-2 px-1">
-          <h2 className="text-[19px] font-bold tracking-[-0.02em]">Happening now</h2>
+          <h2 className="text-[19px] font-bold tracking-[-0.02em]">Live</h2>
           <span className="live-dot size-1.5 rounded-full bg-down" />
+          <span className="ml-auto text-[12px] text-faint">
+            {streamTickers.length} symbols
+          </span>
         </div>
+        <LiveFeed tickers={streamTickers} />
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 px-1 text-[19px] font-bold tracking-[-0.02em]">Today&apos;s story</h2>
         <div className="flex flex-col gap-3">
-          {feed.map((item, i) => (
-            <div key={item.id} className="rise" style={{ animationDelay: `${Math.min(i, 6) * 45}ms` }}>
-              <FeedCard item={item} />
-            </div>
+          {feed.map((item) => (
+            <FeedCard key={item.id} item={item} />
           ))}
         </div>
       </section>
 
       <p className="mt-8 px-2 text-center text-[11.5px] leading-relaxed text-faint/80">
         Information on Splash is for informational and entertainment purposes only and is not
-        financial advice.
+        financial advice. Prices shown are simulated.
       </p>
     </main>
   );

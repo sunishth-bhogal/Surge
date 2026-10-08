@@ -10,7 +10,8 @@ import {
   TickerBadge,
 } from "@/components/ui/primitives";
 import { POSTS, RESOLVED_PREDICTIONS } from "@/data/social";
-import { QUOTES, STOCKS } from "@/data/stocks";
+import { STOCKS } from "@/data/stocks";
+import { deriveQuote } from "@/lib/quote-engine";
 import { compact } from "@/lib/format";
 import type { User } from "@/lib/types";
 
@@ -133,18 +134,17 @@ export function ProfileView({ user, isSelf }: { user: User; isSelf: boolean }) {
           <Card className="divide-y divide-line-soft">
             {user.watchlist.map((ticker) => {
               const stock = STOCKS.find((s) => s.ticker === ticker);
-              const quote = QUOTES[ticker];
-              if (!stock || !quote) return null;
+              const quote = deriveQuote(ticker);
               return (
                 <Link
                   key={ticker}
                   href={`/stock/${ticker}`}
                   className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
                 >
-                  <TickerBadge ticker={ticker} color={stock.logoColor} size={32} />
+                  <TickerBadge ticker={ticker} color={stock?.logoColor ?? "#3d7dff"} size={32} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-bold">{ticker}</p>
-                    <p className="truncate text-[12px] text-faint">{stock.companyName}</p>
+                    <p className="truncate text-[12px] text-faint">{stock?.companyName ?? ticker}</p>
                   </div>
                   <Delta value={quote.changePercent} />
                 </Link>
